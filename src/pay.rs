@@ -4,8 +4,8 @@ use crate::request::HttpMethod;
 use crate::response::SignData;
 use crate::{debug, sign, util};
 use aes_gcm::aead::{AeadMut, Payload};
-use aes_gcm::{aead::KeyInit, Aes256Gcm};
-use reqwest::header::{HeaderMap, ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
+use aes_gcm::{Aes256Gcm, aead::KeyInit};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, USER_AGENT};
 use rsa::pkcs8::DecodePublicKey;
 use rsa::sha2::{Digest, Sha256};
 use rsa::{Pkcs1v15Sign, RsaPublicKey};
@@ -46,7 +46,7 @@ pub trait PayNotifyTrait: WechatPayTrait {
         );
         let pub_key = RsaPublicKey::from_public_key_pem(pub_key)
             .map_err(|e| PayError::VerifyError(format!("public key parser error: {}", e)))?;
-        let hashed = Sha256::new().chain_update(message).finalize();
+        let hashed = Sha256::default().chain_update(message).finalize();
         let signature = util::base64_decode(signature.as_ref())?;
         let scheme = Pkcs1v15Sign::new::<Sha256>();
         pub_key
@@ -194,7 +194,9 @@ impl WechatPay {
 
     #[cfg(feature = "debug-print")]
     pub fn open_debug(&self) {
-        std::env::set_var("RUST_LOG", "oss=debug");
+        unsafe {
+            std::env::set_var("RUST_LOG", "oss=debug");
+        }
         tracing_subscriber::fmt()
             .with_max_level(tracing::Level::DEBUG)
             .with_line_number(true)
@@ -233,11 +235,7 @@ impl WechatPay {
         let signature = self.rsa_sign(message);
         let authorization = format!(
             "WECHATPAY2-SHA256-RSA2048 mchid=\"{}\",nonce_str=\"{}\",signature=\"{}\",timestamp=\"{}\",serial_no=\"{}\"",
-            self.mch_id,
-            nonce_str,
-            signature,
-            timestamp,
-            serial_no,
+            self.mch_id, nonce_str, signature, timestamp, serial_no,
         );
         debug!("authorization: {}", authorization);
         let mut headers = HeaderMap::new();
@@ -253,10 +251,13 @@ impl WechatPay {
 #[cfg(test)]
 mod tests {
     use crate::pay::{PayNotifyTrait, WechatPay, WechatPayTrait};
+    use crate::response::Certificate;
+    use crate::util;
     use dotenvy::dotenv;
     use rsa::pkcs8::DecodePublicKey;
     use rsa::sha2::{Digest, Sha256};
     use rsa::{Pkcs1v15Sign, RsaPublicKey};
+    use std::io::Write;
     use tracing::debug;
     use uuid::Uuid;
 
@@ -362,5 +363,91 @@ mod tests {
         // verifying_key
         //     .verify(message.as_slice(), &signature)
         //     .expect("签名验证失败")
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "async")]
+    pub async fn test_certificates() {
+        init_log();
+        dotenv().ok();
+        let wechat_pay = WechatPay::from_env();
+        let response = wechat_pay.certificates().await.expect("certificates error");
+        let data = response.data.unwrap().first().unwrap().clone();
+        let ciphertext = data.encrypt_certificate.ciphertext;
+        let nonce = data.encrypt_certificate.nonce;
+        let associated_data = data.encrypt_certificate.associated_data;
+        let data = wechat_pay
+            .decrypt_bytes(ciphertext, nonce, associated_data)
+            .unwrap();
+        let pub_key = util::x509_to_pem(data.as_slice()).unwrap();
+        let mut pub_key_file = std::fs::File::create("pubkey.pem").unwrap();
+        pub_key_file.write_all(pub_key.as_bytes()).unwrap();
+
+        let (pub_key_valid, expire_timestamp) = util::x509_is_valid(data.as_slice()).unwrap();
+        debug!(
+            "pub key valid:{} expire_timestamp:{}",
+            pub_key_valid, expire_timestamp
+        ); //证书是否可用,过期时间
+        debug!("pub key: {}", pub_key);
+    }
+
+    #[test]
+    #[cfg(not(feature = "async"))]
+    pub fn test_certificates() {
+        init_log();
+        dotenv().ok();
+        let wechat_pay = WechatPay::from_env();
+        let response = wechat_pay.certificates().expect("certificates error");
+        let data = response.data.unwrap().first().unwrap().clone();
+        let ciphertext = data.encrypt_certificate.ciphertext;
+        let nonce = data.encrypt_certificate.nonce;
+        let associated_data = data.encrypt_certificate.associated_data;
+        let data = wechat_pay
+            .decrypt_bytes(ciphertext, nonce, associated_data)
+            .unwrap();
+        let pub_key = util::x509_to_pem(data.as_slice()).unwrap();
+        let mut pub_key_file = std::fs::File::create("pubkey.pem").unwrap();
+        pub_key_file.write_all(pub_key.as_bytes()).unwrap();
+
+        let (pub_key_valid, expire_timestamp) = util::x509_is_valid(data.as_slice()).unwrap();
+        debug!(
+            "pub key valid:{} expire_timestamp:{}",
+            pub_key_valid, expire_timestamp
+        ); //证书是否可用,过期时间
+        debug!("pub key: {}", pub_key);
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "async")]
+    pub async fn test_decode_certificates() {
+        init_log();
+        dotenv().ok();
+        let wechat_pay = WechatPay::from_env();
+        let response = wechat_pay.certificates().await.expect("certificates error");
+        let data: Certificate = response.data.unwrap()[0].clone();
+        let ciphertext = data.encrypt_certificate.ciphertext;
+        let nonce = data.encrypt_certificate.nonce;
+        let associated_data = data.encrypt_certificate.associated_data;
+        let data = wechat_pay
+            .decrypt_bytes(ciphertext, nonce, associated_data)
+            .unwrap();
+        debug!("data: {}", String::from_utf8_lossy(data.as_ref()));
+    }
+
+    #[test]
+    #[cfg(not(feature = "async"))]
+    pub fn test_decode_certificates() {
+        init_log();
+        dotenv().ok();
+        let wechat_pay = WechatPay::from_env();
+        let response = wechat_pay.certificates().expect("certificates error");
+        let data: Certificate = response.data.unwrap()[0].clone();
+        let ciphertext = data.encrypt_certificate.ciphertext;
+        let nonce = data.encrypt_certificate.nonce;
+        let associated_data = data.encrypt_certificate.associated_data;
+        let data = wechat_pay
+            .decrypt_bytes(ciphertext, nonce, associated_data)
+            .unwrap();
+        debug!("data: {}", String::from_utf8_lossy(data.as_ref()));
     }
 }

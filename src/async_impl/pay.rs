@@ -20,10 +20,10 @@ use crate::response::{CertificateResponse, NativeResponse};
 use reqwest::header::{HeaderMap, REFERER};
 use serde_json::{Map, Value};
 
-#[cfg(not(feature = "async"))]
-use reqwest::blocking::Client;
 #[cfg(feature = "async")]
 use reqwest::Client;
+#[cfg(not(feature = "async"))]
+use reqwest::blocking::Client;
 
 #[cfg(feature = "async")]
 use maybe_async::maybe_async as maybe_async_attr;
@@ -188,141 +188,13 @@ impl WechatPay {
 
 #[cfg(test)]
 mod tests {
-    use dotenvy::dotenv;
     use crate::model::{
         AppParams, H5Params, H5SceneInfo, JsapiParams, MicroParams, NativeParams, RefundsParams,
     };
-    use crate::pay::{PayNotifyTrait, WechatPay};
-    use crate::response::Certificate;
+    use crate::pay::WechatPay;
     use crate::util;
-    use std::io::Write;
+    use dotenvy::dotenv;
     use tracing::debug;
-
-    #[test]
-    pub fn test_jsapi_pay() {
-        init_log();
-        dotenv().ok();
-        let wechat_pay = WechatPay::from_env();
-        let body = wechat_pay
-            .jsapi_pay(JsapiParams::new(
-                "测试支付1分",
-                "1243243",
-                1.into(),
-                "open_id".into(),
-            ))
-            .expect("jsapi_pay error");
-        debug!("body: {:?}", body);
-    }
-
-    #[test]
-    pub fn test_micro_pay() {
-        init_log();
-        dotenv().ok();
-        let wechat_pay = WechatPay::from_env();
-        let body = wechat_pay
-            .micro_pay(MicroParams::new(
-                "测试支付1分",
-                "1243243",
-                1.into(),
-                "open_id".into(),
-            ))
-            .expect("micro_pay error");
-        debug!("body: {:?}", body);
-    }
-
-    #[test]
-    pub fn test_app_pay() {
-        init_log();
-        dotenv().ok();
-        let wechat_pay = WechatPay::from_env();
-        let body = wechat_pay
-            .app_pay(AppParams::new("测试支付1分", "1243243", 1.into()))
-            .expect("app_pay error");
-        debug!("body: {:?}", body);
-    }
-
-    #[test]
-    pub fn test_str() {
-        let str = r#" deeplink : "weixin://wap/pay?prepayid%3Dwx122129234529163c948432e26bc0030000&package=4206921243&noncestr=1705066163&sign=788bc4a9f8f44c6f708aff38c4b48a85""#;
-        let _strs = str.split(r#"""#).find(|line| line.contains("weixin://"));
-    }
-
-    #[test]
-    pub fn test_h5_pay() {
-        init_log();
-        dotenv().ok();
-        let wechat_pay = WechatPay::from_env();
-        let body = wechat_pay
-            .h5_pay(H5Params::new(
-                "测试支付1分",
-                util::random_trade_no().as_str(),
-                1.into(),
-                H5SceneInfo::new("183.6.105.141", "ipa软件下载", "https://mydomain.com"),
-            ))
-            .expect("h5_pay error");
-        let weixin_url = wechat_pay
-            .get_weixin(body.h5_url.unwrap().as_str(), "https://mydomain.com")
-            .unwrap();
-        debug!("weixin_url: {}", weixin_url.unwrap());
-    }
-
-    #[test]
-    pub fn test_certificates() {
-        init_log();
-        dotenv().ok();
-        let wechat_pay = WechatPay::from_env();
-        let response = wechat_pay.certificates().expect("certificates error");
-        let data = response.data.unwrap().first().unwrap().clone();
-        let ciphertext = data.encrypt_certificate.ciphertext;
-        let nonce = data.encrypt_certificate.nonce;
-        let associated_data = data.encrypt_certificate.associated_data;
-        let data = wechat_pay
-            .decrypt_bytes(ciphertext, nonce, associated_data)
-            .unwrap();
-        let pub_key = util::x509_to_pem(data.as_slice()).unwrap();
-        let mut pub_key_file = std::fs::File::create("pubkey.pem").unwrap();
-        pub_key_file.write_all(pub_key.as_bytes()).unwrap();
-
-        let (pub_key_valid, expire_timestamp) = util::x509_is_valid(data.as_slice()).unwrap();
-        debug!(
-            "pub key valid:{} expire_timestamp:{}",
-            pub_key_valid, expire_timestamp
-        ); //证书是否可用,过期时间
-        debug!("pub key: {}", pub_key);
-    }
-
-    #[test]
-    pub fn test_decode_certificates() {
-        init_log();
-        dotenv().ok();
-        let wechat_pay = WechatPay::from_env();
-        let response = wechat_pay.certificates().expect("certificates error");
-        let data: Certificate = response.data.unwrap()[0].clone();
-        let ciphertext = data.encrypt_certificate.ciphertext;
-        let nonce = data.encrypt_certificate.nonce;
-        let associated_data = data.encrypt_certificate.associated_data;
-        let data = wechat_pay
-            .decrypt_bytes(ciphertext, nonce, associated_data)
-            .unwrap();
-        debug!("data: {}", String::from_utf8_lossy(data.as_ref()));
-    }
-
-    #[test]
-    pub fn test_blocking_refunds() {
-        init_log();
-        dotenv().ok();
-        let wechat_pay = WechatPay::from_env();
-
-        let req = RefundsParams::new("123456", 1, 1, None, Some("123456"));
-
-        let body = wechat_pay.refunds(req).expect("refunds fail");
-
-        if body.is_success() {
-            debug!("refunds success: {:?}", body.ok());
-        } else {
-            debug!("refunds error: {:?}", body.err());
-        }
-    }
 
     #[inline]
     fn init_log() {
@@ -344,6 +216,7 @@ mod tests {
             .expect("pay fail");
         debug!("body: {:?}", body);
     }
+
     #[test]
     #[cfg(not(feature = "async"))]
     pub fn test_native_pay() {
@@ -354,6 +227,143 @@ mod tests {
             .native_pay(NativeParams::new("测试支付1分", "1243243", 1.into()))
             .expect("pay fail");
         debug!("body: {:?}", body);
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "async")]
+    pub async fn test_jsapi_pay() {
+        init_log();
+        dotenv().ok();
+        let wechat_pay = WechatPay::from_env();
+        let body = wechat_pay
+            .jsapi_pay(JsapiParams::new(
+                "测试支付1分",
+                "1243243",
+                1.into(),
+                "open_id".into(),
+            ))
+            .await
+            .expect("jsapi_pay error");
+        debug!("body: {:?}", body);
+    }
+
+    #[test]
+    #[cfg(not(feature = "async"))]
+    pub fn test_jsapi_pay() {
+        init_log();
+        dotenv().ok();
+        let wechat_pay = WechatPay::from_env();
+        let body = wechat_pay
+            .jsapi_pay(JsapiParams::new(
+                "测试支付1分",
+                "1243243",
+                1.into(),
+                "open_id".into(),
+            ))
+            .expect("jsapi_pay error");
+        debug!("body: {:?}", body);
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "async")]
+    pub async fn test_micro_pay() {
+        init_log();
+        dotenv().ok();
+        let wechat_pay = WechatPay::from_env();
+        let body = wechat_pay
+            .micro_pay(MicroParams::new(
+                "测试支付1分",
+                "1243243",
+                1.into(),
+                "open_id".into(),
+            ))
+            .await
+            .expect("micro_pay error");
+        debug!("body: {:?}", body);
+    }
+
+    #[test]
+    #[cfg(not(feature = "async"))]
+    pub fn test_micro_pay() {
+        init_log();
+        dotenv().ok();
+        let wechat_pay = WechatPay::from_env();
+        let body = wechat_pay
+            .micro_pay(MicroParams::new(
+                "测试支付1分",
+                "1243243",
+                1.into(),
+                "open_id".into(),
+            ))
+            .expect("micro_pay error");
+        debug!("body: {:?}", body);
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "async")]
+    pub async fn test_app_pay() {
+        init_log();
+        dotenv().ok();
+        let wechat_pay = WechatPay::from_env();
+        let body = wechat_pay
+            .app_pay(AppParams::new("测试支付1分", "1243243", 1.into()))
+            .await
+            .expect("app_pay error");
+        debug!("body: {:?}", body);
+    }
+
+    #[test]
+    #[cfg(not(feature = "async"))]
+    pub fn test_app_pay() {
+        init_log();
+        dotenv().ok();
+        let wechat_pay = WechatPay::from_env();
+        let body = wechat_pay
+            .app_pay(AppParams::new("测试支付1分", "1243243", 1.into()))
+            .expect("app_pay error");
+        debug!("body: {:?}", body);
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "async")]
+    pub async fn test_h5_pay() {
+        init_log();
+        dotenv().ok();
+        let wechat_pay = WechatPay::from_env();
+        let body = wechat_pay
+            .h5_pay(H5Params::new(
+                "测试支付1分",
+                util::random_trade_no().as_str(),
+                1.into(),
+                H5SceneInfo::new("183.6.105.141", "ipa软件下载", "https://mydomain.com"),
+            ))
+            .await
+            .expect("h5_pay error");
+        let weixin_url = wechat_pay
+            .get_weixin(body.h5_url.unwrap().as_str(), "https://mydomain.com")
+            .await
+            .unwrap();
+        debug!("weixin_url: {}", weixin_url.unwrap());
+    }
+
+    #[test]
+    #[cfg(not(feature = "async"))]
+    pub fn test_h5_pay() {
+        init_log();
+        dotenv().ok();
+        let wechat_pay = WechatPay::from_env();
+        let body = wechat_pay
+            .h5_pay(H5Params::new(
+                "测试支付1分",
+                util::random_trade_no().as_str(),
+                1.into(),
+                H5SceneInfo::new("183.6.105.141", "ipa软件下载", "https://mydomain.com"),
+            ))
+            .expect("h5_pay error");
+        let weixin_url = wechat_pay
+            .get_weixin(body.h5_url.unwrap().as_str(), "https://mydomain.com")
+            .unwrap();
+        debug!("weixin_url: {}", weixin_url.unwrap());
     }
 
     #[tokio::test]
