@@ -7,6 +7,7 @@ use crate::model::MicroParams;
 use crate::model::NativeParams;
 use crate::model::ParamsTrait;
 use crate::model::RefundsParams;
+use crate::model::TransferBillsParams;
 use crate::pay::{WechatPay, WechatPayTrait};
 use crate::request::HttpMethod;
 use crate::response::AppResponse;
@@ -15,6 +16,7 @@ use crate::response::JsapiResponse;
 use crate::response::MicroResponse;
 use crate::response::RefundsResponse;
 use crate::response::ResponseTrait;
+use crate::response::TransferBillsResponse;
 use crate::response::WeChatResponse;
 use crate::response::{CertificateResponse, NativeResponse};
 use reqwest::header::{HeaderMap, REFERER};
@@ -184,12 +186,38 @@ impl WechatPay {
             .await
             .map(Ok)?
     }
+
+    #[maybe_async_attr]
+    pub async fn transfer_bills(
+        &self,
+        params: TransferBillsParams,
+    ) -> Result<WeChatResponse<TransferBillsResponse>, PayError> {
+        let url = "/v3/fund-app/mch-transfer/transfer-bills";
+        let body = params.to_json();
+        let headers = self.build_header(HttpMethod::POST, url, body.as_str())?;
+        println!("headers: {:?}", headers);
+        println!("body: {}", body);
+        let client = Client::new();
+        let url = format!("{}{}", self.base_url(), url);
+        debug!("url: {} body: {}", url, body);
+        let builder = client.post(url);
+
+        builder
+            .headers(headers)
+            .body(body)
+            .send()
+            .await?
+            .json::<WeChatResponse<TransferBillsResponse>>()
+            .await
+            .map(Ok)?
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::model::{
         AppParams, H5Params, H5SceneInfo, JsapiParams, MicroParams, NativeParams, RefundsParams,
+        TransferBillsParams, TransferSceneReportInfo,
     };
     use crate::pay::WechatPay;
     use crate::util;
@@ -399,6 +427,40 @@ mod tests {
             debug!("refunds success: {:?}", body.ok());
         } else {
             debug!("refunds error: {:?}", body.err());
+        }
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "async")]
+    pub async fn test_transfer_bills() {
+        init_log();
+        dotenv().ok();
+        let wechat_pay = WechatPay::from_env();
+
+        let report_info = TransferSceneReportInfo {
+            info_type: "奖励说明".to_string(),
+            info_content: "这是一个奖励说明".to_string(),
+        };
+
+        let req = TransferBillsParams::new(
+            "123456",
+            "123123456123",
+            "1000",
+            "123",
+            1,
+            "None",
+            vec![report_info],
+        );
+
+        let body = wechat_pay
+            .transfer_bills(req)
+            .await
+            .expect("transfer_bills fail");
+
+        if body.is_success() {
+            debug!("transfer_bills success: {:?}", body.ok());
+        } else {
+            debug!("transfer_bills error: {:?}", body.err());
         }
     }
 }

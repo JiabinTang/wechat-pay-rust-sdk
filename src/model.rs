@@ -628,3 +628,103 @@ impl ParamsTrait for RefundsParams {
         serde_json::to_string(self).unwrap()
     }
 }
+
+/// 商家转账-发起转账参数
+#[derive(Serialize, Debug, Clone)]
+pub struct TransferBillsParams {
+    /// appid 　必填   string(32)
+    /// 【商户AppID】 是微信开放平台和微信公众平台为开发者的应用程序(APP、小程序、公众号、企业号corpid即为此AppID)提供的一个唯一标识。此处，可以填写这四种类型中的任意一种APPID，但请确保该appid与商户号有绑定关系。参考 微信支付普通商户与AppID账号关联管理
+    pub appid: String,
+
+    /// out_bill_no 　必填   string(32)
+    /// 【商户单号】 商户系统内部的商家单号，要求此参数只能由数字、大小写字母组成，在商户系统内部唯一
+    pub out_bill_no: String,
+
+    /// transfer_scene_id 　必填   string(36)
+    /// 【转账场景ID】 该笔转账使用的转账场景，可前往“商户平台-产品中心-商家转账”中申请。如：1000（现金营销），1006（企业报销）等
+    pub transfer_scene_id: String,
+
+    /// openid 　必填   string(64)
+    /// 【收款用户OpenID】 用户在商户appid下的唯一标识。发起转账前需获取到用户的OpenID，参考接口参数说明
+    pub openid: String,
+
+    /// user_name 　选填   string
+    /// 【收款用户姓名】 收款方真实姓名。若传入收款用户姓名，微信支付会校验收款用户与输入姓名是否一致。转账金额>=2,000元时，必须传入该值。
+    /// 该字段需要加密传入，参考微信支付公钥加密敏感信息指引(推荐)、平台证书加密敏感信息指引
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_name: Option<String>,
+
+    /// transfer_amount 　必填   integer
+    /// 【转账金额】 转账金额，单位为“分”。参考转账额度说明
+    pub transfer_amount: i32,
+
+    /// transfer_remark 　必填   string(32)
+    /// 【转账备注】 转账备注，用户收款时可见该备注信息，UTF8编码，最多允许32个字符
+    pub transfer_remark: String,
+
+    /// notify_url 　选填   string(256)
+    /// 【通知地址】 异步接收微信支付结果通知的回调地址，通知url必须为公网可访问的URL，必须为HTTPS，不能携带参数。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notify_url: Option<String>,
+
+    /// user_recv_perception 　选填   string
+    /// 【用户收款感知】 用户收款时感知的收款原因。不填或填空，将展示转账场景的默认内容。如有其他展示需求，参考 商家转账产品介绍
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_recv_perception: Option<String>,
+
+    /// transfer_scene_report_infos 　必填   array[object]
+    /// 【转账场景报备信息】 需按转账场景准确填写报备信息，参考 转账场景报备信息字段说明
+    pub transfer_scene_report_infos: Vec<TransferSceneReportInfo>,
+}
+
+/// 转账场景报备信息
+#[derive(Serialize, Debug, Clone)]
+pub struct TransferSceneReportInfo {
+    /// info_type 　必填   string(15)
+    /// 【信息类型】 不能超过15个字符，商户所属转账场景下的信息类型，此字段内容为固定值，需严格按照转账场景报备信息字段说明传参。
+    pub info_type: String,
+
+    /// info_content 　必填   string(32)
+    /// 【信息内容】 不能超过32个字符，商户所属转账场景下的信息内容，商户可按实际业务场景自定义传参，需严格按照转账场景报备信息字段说明传参。
+    pub info_content: String,
+}
+
+impl ParamsTrait for TransferBillsParams {
+    fn to_json(&self) -> String {
+        serde_json::to_string(self).unwrap()
+    }
+}
+
+impl TransferBillsParams {
+    /// 创建一个新的 TransferBillsParams
+    /// # 参数
+    /// - `appid`: 商户AppID
+    /// - `out_bill_no`: 商户单号
+    /// - `transfer_scene_id`: 转账场景ID
+    /// - `openid`: 收款用户OpenID
+    /// - `transfer_amount`: 转账金额，单位为“分”
+    /// - `transfer_remark`: 转账备注
+    /// - `transfer_scene_report_infos`: 转账场景报备信息
+    pub fn new<S: AsRef<str>>(
+        appid: S,
+        out_bill_no: S,
+        transfer_scene_id: S,
+        openid: S,
+        transfer_amount: i32,
+        transfer_remark: S,
+        transfer_scene_report_infos: Vec<TransferSceneReportInfo>,
+    ) -> Self {
+        Self {
+            appid: appid.as_ref().to_string(),
+            out_bill_no: out_bill_no.as_ref().to_string(),
+            transfer_scene_id: transfer_scene_id.as_ref().to_string(),
+            openid: openid.as_ref().to_string(),
+            user_name: None,
+            transfer_amount,
+            transfer_remark: transfer_remark.as_ref().to_string(),
+            notify_url: None,
+            user_recv_perception: None,
+            transfer_scene_report_infos,
+        }
+    }
+}
